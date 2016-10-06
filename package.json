@@ -1,0 +1,11 @@
+{
+  "name": "websockets",
+  "version": "1.0.0",
+  "description": "See 'dependencies' for which node modules your app will need to install to use the Websocket Effects Manager for Elm",
+  "author": "Charles Scalfani",
+  "license": "Unlicense",
+  "dependencies": {
+    "@panosoft/elm-native-helpers": "^0.1.6",
+    "ws": "^1.1.1"
+  }
+}
