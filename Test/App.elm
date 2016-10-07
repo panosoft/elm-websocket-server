@@ -2,6 +2,7 @@ port module Test.App exposing (..)
 
 import Html exposing (..)
 import Html.App
+import Time exposing (..)
 import Websocket exposing (..)
 
 
@@ -19,6 +20,7 @@ type alias Model =
 
 type Msg
     = Nop
+    | StopServer Time
     | ServerError ( WSPort, String )
     | Server ( WSPort, ServerStatus )
     | ListenError ( WSPort, Path, String )
@@ -65,6 +67,13 @@ update msg model =
     case msg of
         Nop ->
             model ! []
+
+        StopServer _ ->
+            let
+                l =
+                    Debug.log "Stopping Server" "..."
+            in
+                model ! [ Websocket.stopServer model.wsPort ]
 
         ServerError ( wsPort, error ) ->
             let
@@ -118,9 +127,12 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case model.serverStarted && (not model.listenError) && (model.receiveCount < 3) of
-        True ->
-            Websocket.listen ListenError SendError Sent WSMessage Connection model.wsPort model.path
+    Sub.batch
+        [ case model.serverStarted && (not model.listenError) && (model.receiveCount < 3) of
+            True ->
+                Websocket.listen ListenError SendError Sent WSMessage Connection model.wsPort model.path
 
-        False ->
-            Sub.none
+            False ->
+                Sub.none
+        , Time.every (5 * second) StopServer
+        ]

@@ -59,20 +59,35 @@ const _panosoft$elm_websocket$Native_Websocket = function() {
 		}
 	};
 	const _send = (ws, message, cb) => {
-		ws.send(message, cb);
+		try {
+			ws.send(message, cb);
+		}
+		catch (err) {
+			cb(err.message);
+		}
 	};
+	const _stopServer = (wss, cb) => {
+		try {
+			wss.close(cb);
+		}
+		catch (err) {
+			cb(err.message);
+		}
+	}
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Subs
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Cmds
 	const startServer = helper.call4_1(_startServer);
 	const send = helper.call2_0(_send);
+	const stopServer = helper.call1_0(_stopServer);
 
 	return {
 		///////////////////////////////////////////
 		// Cmds
 		startServer: F5(startServer),
-		send: F3(send)
+		send: F3(send),
+		stopServer: F2(stopServer)
 		///////////////////////////////////////////
 		// Subs
 	};
