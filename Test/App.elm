@@ -9,7 +9,9 @@ port node : Float -> Cmd msg
 
 
 type alias Model =
-    { wsPort : Maybe WSPort
+    { wsPort : WSPort
+    , path : String
+    , receiveCount : Int
     , serverStarted : Bool
     , listenError : Bool
     }
@@ -20,13 +22,17 @@ type Msg
     | ServerError ( WSPort, String )
     | Server ( WSPort, ServerStatus )
     | ListenError ( WSPort, Path, String )
-    | WSMessage ( ClientId, String )
+    | WSMessage ( ClientId, QueryString, String )
     | Connection ( WSPort, ClientId, ConnectionStatus )
+    | SendError ( WSPort, ClientId, String )
+    | Sent ( WSPort, ClientId, String )
 
 
 initModel : Model
 initModel =
-    { wsPort = Nothing
+    { wsPort = 8080
+    , path = "/"
+    , receiveCount = 0
     , serverStarted = False
     , listenError = False
     }
@@ -34,7 +40,11 @@ initModel =
 
 init : ( Model, Cmd Msg )
 init =
-    initModel ! [ Websocket.startServer ServerError Server 8080 ]
+    let
+        model =
+            initModel
+    in
+        model ! [ Websocket.startServer ServerError Server model.wsPort ]
 
 
 main : Program Never
@@ -68,7 +78,7 @@ update msg model =
                 l =
                     Debug.log "Server" ( wsPort, status )
             in
-                { model | serverStarted = True, wsPort = Just wsPort } ! []
+                { model | serverStarted = True } ! []
 
         ListenError ( wsPort, path, error ) ->
             let
@@ -77,12 +87,12 @@ update msg model =
             in
                 { model | listenError = True } ! []
 
-        WSMessage ( clientId, message ) ->
+        WSMessage ( clientId, queryString, message ) ->
             let
                 l =
-                    Debug.log "WSMessage" ( clientId, message )
+                    Debug.log "WSMessage" ( clientId, queryString, message )
             in
-                model ! []
+                model ! [ Websocket.send model.wsPort model.path clientId message ]
 
         Connection ( wsPort, clientId, status ) ->
             let
@@ -91,15 +101,26 @@ update msg model =
             in
                 model ! []
 
+        SendError ( wsPort, clientId, error ) ->
+            let
+                l =
+                    Debug.log "SendError" ( wsPort, clientId, error )
+            in
+                model ! []
+
+        Sent ( wsPort, clientId, message ) ->
+            let
+                l =
+                    Debug.log "Send" ( wsPort, clientId, message )
+            in
+                { model | receiveCount = model.receiveCount + 1 } ! []
+
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case model.serverStarted && (not model.listenError) of
+    case model.serverStarted && (not model.listenError) && (model.receiveCount < 3) of
         True ->
-            Maybe.withDefault Sub.none <|
-                (model.wsPort
-                    |> Maybe.map (\wsPort -> Websocket.listen ListenError WSMessage Connection wsPort "/")
-                )
+            Websocket.listen ListenError SendError Sent WSMessage Connection model.wsPort model.path
 
         False ->
             Sub.none

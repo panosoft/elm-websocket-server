@@ -40,7 +40,7 @@ const _panosoft$elm_websocket$Native_Websocket = function() {
 				const clientId = nextClientId++;
 				const listener = message => {
 					const parsedUrl = url.parse(ws.upgradeReq.url, true);
-					E.Scheduler.rawSpawn(A3(messageCb, parsedUrl.path, clientId, message));
+					E.Scheduler.rawSpawn(A4(messageCb, parsedUrl.pathname, JSON.stringify(parsedUrl.query), clientId, message));
 				};
 				// disconnect handler
 				ws.on('close', _ => {
@@ -58,16 +58,21 @@ const _panosoft$elm_websocket$Native_Websocket = function() {
 			cb(err.message);
 		}
 	};
+	const _send = (ws, message, cb) => {
+		ws.send(message, cb);
+	};
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Subs
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Cmds
 	const startServer = helper.call4_1(_startServer);
+	const send = helper.call2_0(_send);
 
 	return {
 		///////////////////////////////////////////
 		// Cmds
-		startServer: F5(startServer)
+		startServer: F5(startServer),
+		send: F3(send)
 		///////////////////////////////////////////
 		// Subs
 	};
