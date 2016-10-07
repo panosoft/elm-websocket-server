@@ -106,7 +106,7 @@ type alias ConnectionTagger msg =
 {-| TODO add querystring to this
 -}
 type alias MessageTagger msg =
-    String -> msg
+    ( ClientId, String ) -> msg
 
 
 {-| Connection status
@@ -280,83 +280,10 @@ onEffects router cmds newSubs state =
 
         cmdTask =
             Task.sequence (List.reverse <| tasks)
-
-        ( stopTask, stopState ) =
-            stopListeners router oldListeners cmdState
-
-        ( startTask, startState ) =
-            startListeners router newListeners stopState
     in
         cmdTask
             &> Task.sequence subErrorTasks
-            &> stopTask
-            &> startTask
-            &> Task.succeed { startState | listeners = Dict.union keepListeners newListeners }
-
-
-type StartStopListening
-    = StartListening
-    | StopListening
-
-
-startStopListeners : StartStopListening -> Platform.Router msg Msg -> ListenerDict msg -> State msg -> ( Task Never (), State msg )
-startStopListeners startStop router listeners state =
-    ( Task.succeed (), state )
-
-
-
--- let
---     startStopListener connectionId listenerState ( task, state ) =
---         let
---             ( executeTask, executeState ) =
---                 let
---                     nativeListener =
---                         Dict.get connectionId state.nativeListeners
---
---                     getTask connection startStop =
---                         let
---                             settings =
---                                 (settings1 router (ErrorExecuteSQL connectionId sql) (SuccessListenUnlisten listenerState.channel type' connectionId))
---                         in
---                             case startStop of
---                                 StartListening ->
---                                     Native.Postgres.listen settings connection.client sql (\message -> Platform.sendToSelf router (ListenEvent connectionId listenerState.channel message))
---
---                                 StopListening ->
---                                     Native.Postgres.unlisten settings connection.client sql nativeListener
---
---                     maybeTask =
---                         Maybe.map
---                             (\connection ->
---                                 ( getTask connection startStop
---                                 , updateConnection state
---                                     connectionId
---                                     { connection
---                                         | sql = Just sql
---                                         , listenTagger = Just listenerState.listenTagger
---                                         , errorTagger = listenerState.errorTagger
---                                         , eventTagger = Just listenerState.eventTagger
---                                     }
---                                 )
---                             )
---                             (Dict.get connectionId state.connections)
---                 in
---                     maybeTask
---                         // ( invalidConnectionId router listenerState.errorTagger connectionId, state )
---         in
---             ( executeTask &> task, executeState )
--- in
---     Dict.foldl startStopListener ( Task.succeed (), state ) listeners
-
-
-stopListeners : Platform.Router msg Msg -> ListenerDict msg -> State msg -> ( Task Never (), State msg )
-stopListeners =
-    startStopListeners StopListening
-
-
-startListeners : Platform.Router msg Msg -> ListenerDict msg -> State msg -> ( Task Never (), State msg )
-startListeners =
-    startStopListeners StartListening
+            &> Task.succeed { cmdState | listeners = Dict.union keepListeners newListeners }
 
 
 addMySub : Platform.Router msg Msg -> State msg -> MySub msg -> ( ListenerDict msg, List (Task Never ()) ) -> ( ListenerDict msg, List (Task Never ()) )
@@ -364,6 +291,9 @@ addMySub router state sub ( dict, errorTasks ) =
     case sub of
         Listen errorTagger messageTagger connectionTagger wsPort path ->
             let
+                l =
+                    Debug.log "dict" dict
+
                 error msg =
                     errorTagger ( wsPort, path, msg )
 
@@ -417,11 +347,14 @@ handleCmd router state cmd =
 
                 disconnectCb clientId =
                     Platform.sendToSelf router (Disconnect wsPort clientId)
+
+                messageCb path clientId message =
+                    Platform.sendToSelf router (Message wsPort path clientId message)
             in
                 Maybe.map
                     (\server -> ( Platform.sendToApp router (errorTagger ( wsPort, "Server already exists at specified port: " ++ (toString wsPort) )), state ))
                     (Dict.get wsPort state.servers)
-                    // ( Native.Websocket.startServer (settings1 router (ErrorStartServer wsPort) (SuccessStartServer wsPort)) wsPort connectCb disconnectCb
+                    // ( Native.Websocket.startServer (settings1 router (ErrorStartServer wsPort) (SuccessStartServer wsPort)) wsPort connectCb disconnectCb messageCb
                        , { state | servers = Dict.insert wsPort server state.servers }
                        )
 
@@ -495,6 +428,7 @@ type Msg
     | ErrorStartServer WSPort String
     | Connect WSPort ClientId Websocket
     | Disconnect WSPort ClientId
+    | Message WSPort Path ClientId String
 
 
 onSelfMsg : Platform.Router msg Msg -> Msg -> State msg -> Task Never (State msg)
@@ -523,8 +457,8 @@ onSelfMsg router selfMsg state =
                         newState =
                             updateServer wsPort { server | clients = Dict.insert clientId websocket server.clients } state
                     in
-                        withListenerTaggers (\_ _ -> Task.succeed state)
-                            state
+                        withListenerTaggers (\_ _ -> Task.succeed newState)
+                            newState
                             wsPort
                             (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Connected )))
             in
@@ -547,3 +481,9 @@ onSelfMsg router selfMsg state =
                     state
                     wsPort
                     (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Disconnected )))
+
+        Message wsPort path clientId message ->
+            withListenerTaggers (\_ _ -> Task.succeed state)
+                state
+                wsPort
+                (toListeners router state (\listenerTaggers -> listenerTaggers.messageTagger ( clientId, message )))

@@ -10,6 +10,7 @@ port node : Float -> Cmd msg
 
 type alias Model =
     { wsPort : Maybe WSPort
+    , serverStarted : Bool
     , listenError : Bool
     }
 
@@ -19,13 +20,14 @@ type Msg
     | ServerError ( WSPort, String )
     | Server ( WSPort, ServerStatus )
     | ListenError ( WSPort, Path, String )
-    | WSMessage String
+    | WSMessage ( ClientId, String )
     | Connection ( WSPort, ClientId, ConnectionStatus )
 
 
 initModel : Model
 initModel =
     { wsPort = Nothing
+    , serverStarted = False
     , listenError = False
     }
 
@@ -66,7 +68,7 @@ update msg model =
                 l =
                     Debug.log "Server" ( wsPort, status )
             in
-                { model | wsPort = Just wsPort } ! []
+                { model | serverStarted = True, wsPort = Just wsPort } ! []
 
         ListenError ( wsPort, path, error ) ->
             let
@@ -75,10 +77,10 @@ update msg model =
             in
                 { model | listenError = True } ! []
 
-        WSMessage message ->
+        WSMessage ( clientId, message ) ->
             let
                 l =
-                    Debug.log "WSMessage" message
+                    Debug.log "WSMessage" ( clientId, message )
             in
                 model ! []
 
@@ -92,12 +94,12 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case model.listenError of
+    case model.serverStarted && (not model.listenError) of
         True ->
-            Sub.none
-
-        False ->
             Maybe.withDefault Sub.none <|
                 (model.wsPort
                     |> Maybe.map (\wsPort -> Websocket.listen ListenError WSMessage Connection wsPort "")
                 )
+
+        False ->
+            Sub.none

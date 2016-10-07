@@ -25,23 +25,31 @@ const E = {
 // So we must pass elm globals to it (see https://github.com/panosoft/elm-native-helpers for the minimum of E)
 const helper = require('@panosoft/elm-native-helpers/helper')(E);
 const WebSocketServer = require('ws').Server;
+const url = require('url');
 const _panosoft$elm_websocket$Native_Websocket = function() {
 	// next client id
 	var nextClientId = 0;
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Cmds
-	const _startServer = (port, connectCb, disconnectCb, cb) => {
+	const _startServer = (port, connectCb, disconnectCb, messageCb, cb) => {
 		try {
 			const wss = new WebSocketServer({port});
 			// connect handler
 			wss.on('connection', ws => {
 				// set clientId since we cannot compare websockets in Elm and we're going to need clientId when disconnected
 				const clientId = nextClientId++;
+				const listener = message => {
+					const parsedUrl = url.parse(ws.upgradeReq.url, true);
+					E.Scheduler.rawSpawn(A3(messageCb, parsedUrl.path, clientId, message));
+				};
 				// disconnect handler
 				ws.on('close', _ => {
-					disconnectCb(clientId);
+					ws.removeListener('message', listener);
+					E.Scheduler.rawSpawn(disconnectCb(clientId));
 				});
-				connectCb(clientId, ws);
+				// listen
+				ws.on('message', listener);
+				E.Scheduler.rawSpawn(A2(connectCb, clientId, ws));
 			});
 			// return
 			cb(null, wss);
@@ -52,23 +60,18 @@ const _panosoft$elm_websocket$Native_Websocket = function() {
 	};
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Subs
-
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Cmds
-	const startServer = helper.call3_1(_startServer);
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Subs
-//	const listen = helper.call3_1(_listen, helper.unwrap({1:'_0'}));
+	const startServer = helper.call4_1(_startServer);
 
 	return {
 		///////////////////////////////////////////
 		// Cmds
-		startServer: F4(startServer),
+		startServer: F5(startServer)
 		///////////////////////////////////////////
 		// Subs
-//		listen: F4(listen)
 	};
 
 }();
-// for testing locally
+// for local testing
 const _user$project$Native_Websocket = _panosoft$elm_websocket$Native_Websocket;
