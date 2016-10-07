@@ -98,7 +98,7 @@ subscriptions model =
         True ->
             Maybe.withDefault Sub.none <|
                 (model.wsPort
-                    |> Maybe.map (\wsPort -> Websocket.listen ListenError WSMessage Connection wsPort "")
+                    |> Maybe.map (\wsPort -> Websocket.listen ListenError WSMessage Connection wsPort "/")
                 )
 
         False ->

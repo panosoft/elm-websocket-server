@@ -142,12 +142,8 @@ type alias ListenerTaggers msg =
     }
 
 
-type alias ListenerPathDict msg =
-    Dict Path (ListenerTaggers msg)
-
-
 type alias ListenerDict msg =
-    Dict WSPort (ListenerPathDict msg)
+    Dict ( WSPort, Path ) (ListenerTaggers msg)
 
 
 {-| Effects manager state
@@ -256,8 +252,8 @@ listen errorTagger messageTagger connectionTagger wsPort path =
 onEffects : Platform.Router msg Msg -> List (MyCmd msg) -> List (MySub msg) -> State msg -> Task Never (State msg)
 onEffects router cmds newSubs state =
     let
-        ( newSubsDict, subErrorTasks ) =
-            List.foldl (addMySub router state) ( Dict.empty, [] ) newSubs
+        newSubsDict =
+            List.foldl (addMySub router state) Dict.empty newSubs
 
         oldListeners =
             Dict.diff state.listeners newSubsDict
@@ -282,18 +278,14 @@ onEffects router cmds newSubs state =
             Task.sequence (List.reverse <| tasks)
     in
         cmdTask
-            &> Task.sequence subErrorTasks
             &> Task.succeed { cmdState | listeners = Dict.union keepListeners newListeners }
 
 
-addMySub : Platform.Router msg Msg -> State msg -> MySub msg -> ( ListenerDict msg, List (Task Never ()) ) -> ( ListenerDict msg, List (Task Never ()) )
-addMySub router state sub ( dict, errorTasks ) =
+addMySub : Platform.Router msg Msg -> State msg -> MySub msg -> ListenerDict msg -> ListenerDict msg
+addMySub router state sub dict =
     case sub of
         Listen errorTagger messageTagger connectionTagger wsPort path ->
             let
-                l =
-                    Debug.log "dict" dict
-
                 error msg =
                     errorTagger ( wsPort, path, msg )
 
@@ -302,15 +294,7 @@ addMySub router state sub ( dict, errorTasks ) =
                     , connectionTagger = connectionTagger
                     }
             in
-                Maybe.map
-                    (\pathDict ->
-                        Maybe.map
-                            (\_ -> ( dict, Platform.sendToApp router (error ("Specified path already exists: " ++ path)) :: errorTasks ))
-                            (Dict.get path pathDict)
-                            // ( Dict.insert wsPort (Dict.insert path newSub pathDict) dict, errorTasks )
-                    )
-                    (Dict.get wsPort dict)
-                    // ( dict, Platform.sendToApp router (error ("No server at specified port: " ++ (toString wsPort))) :: errorTasks )
+                Dict.insert ( wsPort, path ) newSub dict
 
 
 settings0 : Platform.Router msg Msg -> (a -> Msg) -> Msg -> { onError : a -> Task msg (), onSuccess : Never -> Task x () }
@@ -394,14 +378,12 @@ getServer state wsPort =
             Debug.crash "error"
 
 
-noListeners : State msg -> WSPort -> Task Never (State msg)
-noListeners state wsPort =
-    crashTask state <| "Server on port " ++ (toStringF wsPort) ++ " doesn't have listeners: " ++ (toStringF <| printableState state)
-
-
-withListenerTaggers : (State msg -> WSPort -> Task Never (State msg)) -> State msg -> WSPort -> (List (ListenerTaggers msg) -> Task Never (State msg)) -> Task Never (State msg)
-withListenerTaggers defaultHandler state wsPort f =
-    Maybe.map (\pathDict -> f <| Dict.values pathDict) (Dict.get wsPort state.listeners) /!/ (\_ -> defaultHandler state wsPort)
+withListenerTaggers : State msg -> WSPort -> Maybe Path -> (List (ListenerTaggers msg) -> Task Never (State msg)) -> Task Never (State msg)
+withListenerTaggers state wsPort maybePath f =
+    Dict.toList state.listeners
+        |> List.filter (\( ( wsPort', path ), taggers ) -> wsPort' == wsPort && Maybe.map (\path' -> path' == path) maybePath // True)
+        |> List.map snd
+        |> f
 
 
 updateServer : WSPort -> Server msg -> State msg -> State msg
@@ -457,9 +439,10 @@ onSelfMsg router selfMsg state =
                         newState =
                             updateServer wsPort { server | clients = Dict.insert clientId websocket server.clients } state
                     in
-                        withListenerTaggers (\_ _ -> Task.succeed newState)
+                        withListenerTaggers
                             newState
                             wsPort
+                            Nothing
                             (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Connected )))
             in
                 withServer state wsPort process
@@ -477,13 +460,15 @@ onSelfMsg router selfMsg state =
                         (Dict.get clientId state.servers)
                         // state
             in
-                withListenerTaggers (\_ _ -> Task.succeed state)
+                withListenerTaggers
                     state
                     wsPort
+                    Nothing
                     (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Disconnected )))
 
         Message wsPort path clientId message ->
-            withListenerTaggers (\_ _ -> Task.succeed state)
+            withListenerTaggers
                 state
                 wsPort
+                (Just path)
                 (toListeners router state (\listenerTaggers -> listenerTaggers.messageTagger ( clientId, message )))
