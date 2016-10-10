@@ -34,7 +34,7 @@ import Native.Websocket
 
 
 type MyCmd msg
-    = StartServer (ServerErrorTagger msg) (ServerTagger msg) WSPort
+    = StartServer (ServerErrorTagger msg) (ServerTagger msg) (UnhandledMessageTagger msg) WSPort
     | Send WSPort Path ClientId String
     | StopServer WSPort
 
@@ -122,6 +122,10 @@ type alias MessageTagger msg =
     ( ClientId, QueryString, String ) -> msg
 
 
+type alias UnhandledMessageTagger msg =
+    ( WSPort, Path, QueryString, ClientId, String ) -> msg
+
+
 {-| Connection status
 -}
 type ConnectionStatus
@@ -141,6 +145,7 @@ type alias Server msg =
     { wsServer : Maybe WebsocketServer
     , errorTagger : ServerErrorTagger msg
     , tagger : ServerTagger msg
+    , unhandledMessage : UnhandledMessageTagger msg
     , clients : ClientDict
     }
 
@@ -169,21 +174,26 @@ type alias State msg =
     }
 
 
-(//) : Maybe a -> a -> a
-(//) =
+(?=) : Maybe a -> a -> a
+(?=) =
     flip Maybe.withDefault
 
 
 {-| lazy version of // operator
 -}
-(/!/) : Maybe a -> (() -> a) -> a
-(/!/) maybe lazy =
+(?!=) : Maybe a -> (() -> a) -> a
+(?!=) maybe lazy =
     case maybe of
         Just x ->
             x
 
         Nothing ->
             lazy ()
+
+
+(|?>) : Maybe a -> (a -> b) -> Maybe b
+(|?>) =
+    flip Maybe.map
 
 
 (&>) : Task x a -> Task x b -> Task x b
@@ -211,8 +221,8 @@ init =
 cmdMap : (a -> b) -> MyCmd a -> MyCmd b
 cmdMap f cmd =
     case cmd of
-        StartServer errorTagger tagger wsPort ->
-            StartServer (f << errorTagger) (f << tagger) wsPort
+        StartServer errorTagger tagger unhandledMessageTagger wsPort ->
+            StartServer (f << errorTagger) (f << tagger) (f << unhandledMessageTagger) wsPort
 
         Send wsPort path id message ->
             Send wsPort path id message
@@ -223,9 +233,9 @@ cmdMap f cmd =
 
 {-| TODO
 -}
-startServer : ServerErrorTagger msg -> ServerTagger msg -> WSPort -> Cmd msg
-startServer errorTagger tagger wsPort =
-    command (StartServer errorTagger tagger wsPort)
+startServer : ServerErrorTagger msg -> ServerTagger msg -> UnhandledMessageTagger msg -> WSPort -> Cmd msg
+startServer errorTagger tagger unhandledMessageTagger wsPort =
+    command (StartServer errorTagger tagger unhandledMessageTagger wsPort)
 
 
 {-| TODO
@@ -338,10 +348,10 @@ settings2 router errorTagger tagger =
 handleCmd : Platform.Router msg Msg -> State msg -> MyCmd msg -> ( Task Never (), State msg )
 handleCmd router state cmd =
     case cmd of
-        StartServer errorTagger tagger wsPort ->
+        StartServer errorTagger tagger unhandledMessageTagger wsPort ->
             let
                 server =
-                    Server Nothing errorTagger tagger Dict.empty
+                    Server Nothing errorTagger tagger unhandledMessageTagger Dict.empty
 
                 connectCb clientId websocket =
                     Platform.sendToSelf router (Connect wsPort clientId websocket)
@@ -352,35 +362,31 @@ handleCmd router state cmd =
                 messageCb path queryString clientId message =
                     Platform.sendToSelf router (Message wsPort path queryString clientId message)
             in
-                Maybe.map
-                    (\server -> ( Platform.sendToApp router (errorTagger ( wsPort, "Server already exists at specified port: " ++ (toString wsPort) )), state ))
-                    (Dict.get wsPort state.servers)
-                    // ( Native.Websocket.startServer (settings1 router (ErrorStartServer wsPort) (SuccessStartServer wsPort)) wsPort connectCb disconnectCb messageCb
+                (Dict.get wsPort state.servers)
+                    |?> (\server -> ( Platform.sendToApp router (errorTagger ( wsPort, "Server already exists at specified port: " ++ (toString wsPort) )), state ))
+                    ?= ( Native.Websocket.startServer (settings1 router (ErrorStartServer wsPort) (SuccessStartServer wsPort)) wsPort connectCb disconnectCb messageCb
                        , { state | servers = Dict.insert wsPort server state.servers }
                        )
 
         Send wsPort path clientId message ->
-            ( Maybe.map
-                (\server ->
-                    Maybe.map (\ws -> Native.Websocket.send (settings0 router (ErrorSend wsPort path clientId) (SuccessSend wsPort path clientId message)) ws message)
-                        (Dict.get clientId server.clients)
-                        // Platform.sendToSelf router (ErrorSend wsPort path clientId <| "Client does NOT exists with id: " ++ (toString clientId))
-                )
-                (Dict.get wsPort state.servers)
-                // Platform.sendToSelf router (ErrorSend wsPort path clientId <| "Server does NOT exists at specified port: " ++ (toString wsPort))
+            ( Dict.get wsPort state.servers
+                |?> (\server ->
+                        Dict.get clientId server.clients
+                            |?> (\ws -> Native.Websocket.send (settings0 router (ErrorSend wsPort path clientId) (SuccessSend wsPort path clientId message)) ws message)
+                            ?= Platform.sendToSelf router (ErrorSend wsPort path clientId <| "Client does NOT exists with id: " ++ (toString clientId))
+                    )
+                ?= Platform.sendToSelf router (ErrorSend wsPort path clientId <| "Server does NOT exists at specified port: " ++ (toString wsPort))
             , state
             )
 
         StopServer wsPort ->
-            ( Maybe.map
-                (\server ->
-                    Maybe.map
-                        (\wss -> Native.Websocket.stopServer (settings0 router (ErrorStopServer wsPort) (SuccessStopServer wsPort)) wss)
+            ( Dict.get wsPort state.servers
+                |?> (\server ->
                         server.wsServer
-                        // Task.succeed ()
-                )
-                (Dict.get wsPort state.servers)
-                // Platform.sendToSelf router (ErrorStopServer wsPort <| "Server does NOT exists at specified port: " ++ (toString wsPort))
+                            |?> (\wss -> Native.Websocket.stopServer (settings0 router (ErrorStopServer wsPort) (SuccessStopServer wsPort)) wss)
+                            ?= Task.succeed ()
+                    )
+                ?= Platform.sendToSelf router (ErrorStopServer wsPort <| "Server does NOT exists at specified port: " ++ (toString wsPort))
             , state
             )
 
@@ -401,8 +407,9 @@ printableState state =
 
 withServer : State msg -> WSPort -> (Server msg -> Task Never (State msg)) -> Task Never (State msg)
 withServer state wsPort f =
-    Maybe.map f (Dict.get wsPort state.servers)
-        /!/ (\_ -> (crashTask state <| "Server on port " ++ (toStringF wsPort) ++ " is not in state: " ++ (toStringF <| printableState state)))
+    Dict.get wsPort state.servers
+        |?> f
+        ?!= (\_ -> (crashTask state <| "Server on port " ++ (toStringF wsPort) ++ " is not in state: " ++ (toStringF <| printableState state)))
 
 
 getServer : State msg -> WSPort -> Server msg
@@ -415,12 +422,16 @@ getServer state wsPort =
             Debug.crash "error"
 
 
+listenerTaggers : State msg -> WSPort -> Maybe Path -> List (ListenerTaggers msg)
+listenerTaggers state wsPort maybePath =
+    Dict.toList state.listeners
+        |> List.filter (\( ( wsPort', path ), taggers ) -> wsPort' == wsPort && maybePath |?> (\path' -> path' == path) ?= True)
+        |> List.map snd
+
+
 withListenerTaggers : State msg -> WSPort -> Maybe Path -> (List (ListenerTaggers msg) -> Task Never (State msg)) -> Task Never (State msg)
 withListenerTaggers state wsPort maybePath f =
-    Dict.toList state.listeners
-        |> List.filter (\( ( wsPort', path ), taggers ) -> wsPort' == wsPort && Maybe.map (\path' -> path' == path) maybePath // True)
-        |> List.map snd
-        |> f
+    f <| listenerTaggers state wsPort maybePath
 
 
 updateServer : WSPort -> Server msg -> State msg -> State msg
@@ -458,24 +469,22 @@ onSelfMsg : Platform.Router msg Msg -> Msg -> State msg -> Task Never (State msg
 onSelfMsg router selfMsg state =
     case selfMsg of
         SuccessStartServer wsPort websocketServer ->
-            let
-                process server =
+            (withServer state wsPort)
+                (\server ->
                     Platform.sendToApp router (server.tagger ( wsPort, Started ))
                         &> Task.succeed (updateServer wsPort { server | wsServer = Just websocketServer } state)
-            in
-                withServer state wsPort process
+                )
 
         ErrorStartServer wsPort err ->
-            let
-                process server =
+            (withServer state wsPort)
+                (\server ->
                     Platform.sendToApp router (server.errorTagger ( wsPort, err ))
                         &> Task.succeed (removeServer wsPort state)
-            in
-                withServer state wsPort process
+                )
 
         Connect wsPort clientId websocket ->
-            let
-                process server =
+            (withServer state wsPort)
+                (\server ->
                     let
                         newState =
                             updateServer wsPort { server | clients = Dict.insert clientId websocket server.clients } state
@@ -485,8 +494,7 @@ onSelfMsg router selfMsg state =
                             wsPort
                             Nothing
                             (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Connected )))
-            in
-                withServer state wsPort process
+                )
 
         Disconnect wsPort clientId ->
             let
@@ -494,12 +502,9 @@ onSelfMsg router selfMsg state =
                     getServer state wsPort
 
                 newState =
-                    Maybe.map
-                        (\server ->
-                            { state | servers = Dict.insert wsPort { server | clients = Dict.remove clientId server.clients } state.servers }
-                        )
-                        (Dict.get clientId state.servers)
-                        // state
+                    Dict.get clientId state.servers
+                        |?> (\server -> { state | servers = Dict.insert wsPort { server | clients = Dict.remove clientId server.clients } state.servers })
+                        ?= state
             in
                 withListenerTaggers
                     state
@@ -508,11 +513,18 @@ onSelfMsg router selfMsg state =
                     (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Disconnected )))
 
         Message wsPort path queryString clientId message ->
-            withListenerTaggers
-                state
-                wsPort
-                (Just path)
-                (toListeners router state (\listenerTaggers -> listenerTaggers.messageTagger ( clientId, queryString, message )))
+            let
+                taggers =
+                    listenerTaggers state wsPort (Just path)
+            in
+                case List.isEmpty taggers of
+                    True ->
+                        (withServer state wsPort)
+                            (\server -> Platform.sendToApp router (server.unhandledMessage ( wsPort, path, queryString, clientId, message )) &> Task.succeed state)
+
+                    False ->
+                        taggers
+                            |> (toListeners router state (\listenerTaggers -> listenerTaggers.messageTagger ( clientId, queryString, message )))
 
         ErrorSend wsPort path clientId error ->
             let
@@ -533,17 +545,15 @@ onSelfMsg router selfMsg state =
                 (toListeners router state (\listenerTaggers -> listenerTaggers.sendTagger ( wsPort, clientId, message )))
 
         SuccessStopServer wsPort ->
-            let
-                process server =
+            (withServer state wsPort)
+                (\server ->
                     Platform.sendToApp router (server.tagger ( wsPort, Stopped ))
                         &> Task.succeed (updateServer wsPort { server | wsServer = Nothing } state)
-            in
-                withServer state wsPort process
+                )
 
         ErrorStopServer wsPort err ->
-            let
-                process server =
+            (withServer state wsPort)
+                (\server ->
                     Platform.sendToApp router (server.errorTagger ( wsPort, err ))
                         &> Task.succeed (removeServer wsPort state)
-            in
-                withServer state wsPort process
+                )
