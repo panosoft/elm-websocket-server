@@ -24,11 +24,6 @@ type Msg
     | StopServer Time
     | ServerError ( WSPort, String )
     | Server ( WSPort, ServerStatus )
-      -- | ListenError ( WSPort, Path, String )
-      -- | WSMessage ( ClientId, QueryString, String )
-      -- | Connection ( WSPort, ClientId, ConnectionStatus )
-      -- | SendError ( WSPort, ClientId, String )
-      -- | Sent ( WSPort, ClientId, String )
     | UnhandledMessage ( WSPort, Path, QueryString, ClientId, String )
     | ListenModule Listener.Msg
 
