@@ -35,12 +35,12 @@ import Native.Websocket
 
 type MyCmd msg
     = StartServer (ServerErrorTagger msg) (ServerTagger msg) (UnhandledMessageTagger msg) WSPort
-    | Send WSPort Path ClientId String
+    | Send (SendErrorTagger msg) (SendTagger msg) WSPort ClientId String
     | StopServer WSPort
 
 
 type MySub msg
-    = Listen (ListenErrorTagger msg) (SendErrorTagger msg) (SendTagger msg) (MessageTagger msg) (ConnectionTagger msg) WSPort Path
+    = Listen (ListenErrorTagger msg) (MessageTagger msg) (ConnectionTagger msg) WSPort Path
 
 
 
@@ -155,9 +155,7 @@ type alias ServerDict msg =
 
 
 type alias ListenerTaggers msg =
-    { sendErrorTagger : SendErrorTagger msg
-    , sendTagger : SendTagger msg
-    , messageTagger : MessageTagger msg
+    { messageTagger : MessageTagger msg
     , connectionTagger : ConnectionTagger msg
     }
 
@@ -232,8 +230,8 @@ cmdMap f cmd =
         StartServer errorTagger tagger unhandledMessageTagger wsPort ->
             StartServer (f << errorTagger) (f << tagger) (f << unhandledMessageTagger) wsPort
 
-        Send wsPort path id message ->
-            Send wsPort path id message
+        Send sendErrorTagger sendTagger wsPort id message ->
+            Send (f << sendErrorTagger) (f << sendTagger) wsPort id message
 
         StopServer wsPort ->
             StopServer wsPort
@@ -248,9 +246,9 @@ startServer errorTagger tagger unhandledMessageTagger wsPort =
 
 {-| TODO
 -}
-send : WSPort -> Path -> ClientId -> String -> Cmd msg
-send wsPort path id message =
-    command (Send wsPort path id message)
+send : SendErrorTagger msg -> SendTagger msg -> WSPort -> ClientId -> String -> Cmd msg
+send sendErrorTagger sendTagger wsPort id message =
+    command (Send sendErrorTagger sendTagger wsPort id message)
 
 
 {-| TODO
@@ -267,22 +265,22 @@ stopServer wsPort =
 subMap : (a -> b) -> MySub a -> MySub b
 subMap f sub =
     case sub of
-        Listen errorTagger sendErrorTagger sendTagger messageTagger connectionTagger wsPort path ->
-            Listen (f << errorTagger) (f << sendErrorTagger) (f << sendTagger) (f << messageTagger) (f << connectionTagger) wsPort path
+        Listen errorTagger messageTagger connectionTagger wsPort path ->
+            Listen (f << errorTagger) (f << messageTagger) (f << connectionTagger) wsPort path
 
 
 {-| TODO
 -}
-listen : ListenErrorTagger msg -> SendErrorTagger msg -> SendTagger msg -> MessageTagger msg -> ConnectionTagger msg -> WSPort -> Path -> Sub msg
-listen errorTagger sendErrorTagger sendTagger messageTagger connectionTagger wsPort path =
-    subscription (Listen errorTagger sendErrorTagger sendTagger messageTagger connectionTagger wsPort path)
+listen : ListenErrorTagger msg -> MessageTagger msg -> ConnectionTagger msg -> WSPort -> Path -> Sub msg
+listen errorTagger messageTagger connectionTagger wsPort path =
+    subscription (Listen errorTagger messageTagger connectionTagger wsPort path)
 
 
 
 -- effect managers API
 
 
-onEffects : Platform.Router msg Msg -> List (MyCmd msg) -> List (MySub msg) -> State msg -> Task Never (State msg)
+onEffects : Platform.Router msg (Msg msg) -> List (MyCmd msg) -> List (MySub msg) -> State msg -> Task Never (State msg)
 onEffects router cmds newSubs state =
     let
         ( newSubsDict, subErrorTasks ) =
@@ -312,18 +310,16 @@ onEffects router cmds newSubs state =
             &> Task.succeed { cmdState | listeners = Dict.union keepListeners newListeners }
 
 
-addMySub : Platform.Router msg Msg -> State msg -> MySub msg -> ( ListenerDict msg, List (Task x ()) ) -> ( ListenerDict msg, List (Task x ()) )
+addMySub : Platform.Router msg (Msg msg) -> State msg -> MySub msg -> ( ListenerDict msg, List (Task x ()) ) -> ( ListenerDict msg, List (Task x ()) )
 addMySub router state sub ( dict, errorTasks ) =
     case sub of
-        Listen errorTagger sendErrorTagger sendTagger messageTagger connectionTagger wsPort path ->
+        Listen errorTagger messageTagger connectionTagger wsPort path ->
             let
                 error msg =
                     errorTagger ( wsPort, path, msg )
 
                 newSub =
-                    { sendErrorTagger = sendErrorTagger
-                    , sendTagger = sendTagger
-                    , messageTagger = messageTagger
+                    { messageTagger = messageTagger
                     , connectionTagger = connectionTagger
                     }
 
@@ -335,28 +331,28 @@ addMySub router state sub ( dict, errorTasks ) =
                 ( Dict.insert ( wsPort, path ) newSub dict, newErrorTasks )
 
 
-settings0 : Platform.Router msg Msg -> (a -> Msg) -> Msg -> { onError : a -> Task msg (), onSuccess : Never -> Task x () }
+settings0 : Platform.Router msg (Msg msg) -> (a -> Msg msg) -> Msg msg -> { onError : a -> Task msg (), onSuccess : Never -> Task x () }
 settings0 router errorTagger tagger =
     { onError = \err -> Platform.sendToSelf router (errorTagger err)
     , onSuccess = \_ -> Platform.sendToSelf router tagger
     }
 
 
-settings1 : Platform.Router msg Msg -> (a -> Msg) -> (b -> Msg) -> { onError : a -> Task Never (), onSuccess : b -> Task x () }
+settings1 : Platform.Router msg (Msg msg) -> (a -> Msg msg) -> (b -> Msg msg) -> { onError : a -> Task Never (), onSuccess : b -> Task x () }
 settings1 router errorTagger tagger =
     { onError = \err -> Platform.sendToSelf router (errorTagger err)
     , onSuccess = \result1 -> Platform.sendToSelf router (tagger result1)
     }
 
 
-settings2 : Platform.Router msg Msg -> (a -> Msg) -> (b -> c -> Msg) -> { onError : a -> Task Never (), onSuccess : b -> c -> Task x () }
+settings2 : Platform.Router msg (Msg msg) -> (a -> Msg msg) -> (b -> c -> Msg msg) -> { onError : a -> Task Never (), onSuccess : b -> c -> Task x () }
 settings2 router errorTagger tagger =
     { onError = \err -> Platform.sendToSelf router (errorTagger err)
     , onSuccess = \result1 result2 -> Platform.sendToSelf router (tagger result1 result2)
     }
 
 
-handleCmd : Platform.Router msg Msg -> State msg -> MyCmd msg -> ( Task Never (), State msg )
+handleCmd : Platform.Router msg (Msg msg) -> State msg -> MyCmd msg -> ( Task Never (), State msg )
 handleCmd router state cmd =
     case cmd of
         StartServer errorTagger tagger unhandledMessageTagger wsPort ->
@@ -379,14 +375,14 @@ handleCmd router state cmd =
                        , { state | servers = Dict.insert wsPort server state.servers }
                        )
 
-        Send wsPort path clientId message ->
+        Send sendErrorTagger sendTagger wsPort clientId message ->
             ( Dict.get wsPort state.servers
                 |?> (\server ->
                         Dict.get clientId server.clients
-                            |?> (\ws -> Native.Websocket.send (settings0 router (ErrorSend wsPort path clientId) (SuccessSend wsPort path clientId message)) ws message)
-                            ?= Platform.sendToSelf router (ErrorSend wsPort path clientId <| "Client does NOT exists with id: " ++ (toString clientId))
+                            |?> (\ws -> Native.Websocket.send (settings0 router (ErrorSend sendErrorTagger wsPort clientId) (SuccessSend sendTagger wsPort clientId message)) ws message)
+                            ?= Platform.sendToSelf router (ErrorSend sendErrorTagger wsPort clientId <| "Client does NOT exists with id: " ++ (toString clientId))
                     )
-                ?= Platform.sendToSelf router (ErrorSend wsPort path clientId <| "Server does NOT exists at specified port: " ++ (toString wsPort))
+                ?= Platform.sendToSelf router (ErrorSend sendErrorTagger wsPort clientId <| "Server does NOT exists at specified port: " ++ (toString wsPort))
             , state
             )
 
@@ -455,7 +451,7 @@ removeServer wsPort state =
     { state | servers = Dict.remove wsPort state.servers }
 
 
-toListeners : Platform.Router msg Msg -> State msg -> (ListenerTaggers msg -> msg) -> List (ListenerTaggers msg) -> Task Never (State msg)
+toListeners : Platform.Router msg (Msg msg) -> State msg -> (ListenerTaggers msg -> msg) -> List (ListenerTaggers msg) -> Task Never (State msg)
 toListeners router state msgConstructor listenerTaggersList =
     (listenerTaggersList
         |> List.foldl (\listenerTaggers tasks -> Platform.sendToApp router (msgConstructor listenerTaggers) :: tasks) []
@@ -464,19 +460,19 @@ toListeners router state msgConstructor listenerTaggersList =
         &> Task.succeed state
 
 
-type Msg
+type Msg msg
     = SuccessStartServer WSPort WebsocketServer
     | ErrorStartServer WSPort String
     | Connect WSPort ClientId Websocket
     | Disconnect WSPort ClientId
     | Message WSPort Path QueryString ClientId String
-    | ErrorSend WSPort Path ClientId String
-    | SuccessSend WSPort Path ClientId String
+    | ErrorSend (SendErrorTagger msg) WSPort ClientId String
+    | SuccessSend (SendTagger msg) WSPort ClientId String
     | SuccessStopServer WSPort
     | ErrorStopServer WSPort String
 
 
-onSelfMsg : Platform.Router msg Msg -> Msg -> State msg -> Task Never (State msg)
+onSelfMsg : Platform.Router msg (Msg msg) -> Msg msg -> State msg -> Task Never (State msg)
 onSelfMsg router selfMsg state =
     case selfMsg of
         SuccessStartServer wsPort websocketServer ->
@@ -537,23 +533,17 @@ onSelfMsg router selfMsg state =
                         taggers
                             |> (toListeners router state (\listenerTaggers -> listenerTaggers.messageTagger ( clientId, queryString, message )))
 
-        ErrorSend wsPort path clientId error ->
+        ErrorSend sendErrorTagger wsPort clientId error ->
             let
-                error =
-                    "Send error: '" ++ error ++ "' for server on port: " ++ (toString wsPort) ++ "for clientId: " ++ (toString clientId)
+                errorMsg =
+                    "Send error: '" ++ error ++ "' for server on port: " ++ (toString wsPort) ++ " for clientId: " ++ (toString clientId)
             in
-                withListenerTaggers
-                    state
-                    wsPort
-                    (Just path)
-                    (toListeners router state (\listenerTaggers -> listenerTaggers.sendErrorTagger ( wsPort, clientId, error )))
+                (Platform.sendToApp router <| sendErrorTagger ( wsPort, clientId, errorMsg ))
+                    &> Task.succeed state
 
-        SuccessSend wsPort path clientId message ->
-            withListenerTaggers
-                state
-                wsPort
-                (Just path)
-                (toListeners router state (\listenerTaggers -> listenerTaggers.sendTagger ( wsPort, clientId, message )))
+        SuccessSend sendTagger wsPort clientId message ->
+            (Platform.sendToApp router <| sendTagger ( wsPort, clientId, message ))
+                &> Task.succeed state
 
         SuccessStopServer wsPort ->
             (withServer state wsPort)

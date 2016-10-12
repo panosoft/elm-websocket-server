@@ -54,7 +54,7 @@ update msg model =
                 l =
                     Debug.log "WSMessage" ( clientId, queryString, message )
             in
-                model ! [ Websocket.send model.wsPort model.path clientId message ]
+                model ! [ Websocket.send SendError Sent model.wsPort clientId message ]
 
         SendError ( wsPort, clientId, error ) ->
             let
@@ -75,7 +75,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     case not model.listenError && model.receiveCount < 3 of
         True ->
-            Websocket.listen ListenError SendError Sent WSMessage Connection model.wsPort model.path
+            Websocket.listen ListenError WSMessage Connection model.wsPort model.path
 
         False ->
             Sub.none
