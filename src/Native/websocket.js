@@ -26,7 +26,7 @@ const E = {
 const helper = require('@panosoft/elm-native-helpers/helper')(E);
 const WebSocketServer = require('ws').Server;
 const url = require('url');
-const _panosoft$elm_websocket$Native_Websocket = function() {
+const _panosoft$elm_websocket_node$Native_Websocket = function() {
 	// next client id
 	var nextClientId = 0;
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -74,10 +74,6 @@ const _panosoft$elm_websocket$Native_Websocket = function() {
 			cb(err.message);
 		}
 	}
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Subs
-	//////////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Cmds
 	const startServer = helper.call4_1(_startServer);
 	const send = helper.call2_0(_send);
 	const stopServer = helper.call1_0(_stopServer);
@@ -94,4 +90,4 @@ const _panosoft$elm_websocket$Native_Websocket = function() {
 
 }();
 // for local testing
-const _user$project$Native_Websocket = _panosoft$elm_websocket$Native_Websocket;
+const _user$project$Native_Websocket = _panosoft$elm_websocket_node$Native_Websocket;

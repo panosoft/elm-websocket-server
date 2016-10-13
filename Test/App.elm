@@ -76,7 +76,7 @@ update msg model =
                 l =
                     Debug.log "Stopping Server" "..."
             in
-                model ! [ Websocket.stopServer model.wsPort, node 1 ]
+                model ! [ Websocket.stopServer ServerError Server model.wsPort, node 1 ]
 
         ServerError ( wsPort, error ) ->
             let
@@ -111,5 +111,5 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ Sub.map ListenModule <| Listener.subscriptions model.listenerModel
-        , Time.every (15 * second) StopServer
+          -- , Time.every (15 * second) StopServer
         ]
