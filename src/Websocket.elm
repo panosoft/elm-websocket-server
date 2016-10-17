@@ -39,13 +39,13 @@ import Native.Websocket
 
 
 type MyCmd msg
-    = StartServer (ServerErrorTagger msg) (ServerTagger msg) (UnhandledMessageTagger msg) (Maybe FilePath) (Maybe FilePath) WSPort
+    = StartServer (ServerErrorTagger msg) (ServerStatusTagger msg) (UnhandledMessageTagger msg) (Maybe FilePath) (Maybe FilePath) WSPort
     | Send (SendErrorTagger msg) (SendTagger msg) WSPort ClientId String
-    | StopServer (ServerErrorTagger msg) (ServerTagger msg) WSPort
+    | StopServer (ServerErrorTagger msg) (ServerStatusTagger msg) WSPort
 
 
 type MySub msg
-    = Listen (ListenErrorTagger msg) (MessageTagger msg) (ConnectionTagger msg) WSPort Path
+    = Listen (ListenErrorTagger msg) (MessageTagger msg) (ConnectionStatusTagger msg) WSPort Path
 
 
 
@@ -94,13 +94,6 @@ type alias FilePath =
     String
 
 
-{-| Server Status types
--}
-type ServerStatus
-    = Started
-    | Stopped
-
-
 
 -- Taggers
 
@@ -121,11 +114,11 @@ type alias SendTagger msg =
     ( WSPort, ClientId, String ) -> msg
 
 
-type alias ServerTagger msg =
+type alias ServerStatusTagger msg =
     ( WSPort, ServerStatus ) -> msg
 
 
-type alias ConnectionTagger msg =
+type alias ConnectionStatusTagger msg =
     ( WSPort, ClientId, ConnectionStatus ) -> msg
 
 
@@ -135,6 +128,13 @@ type alias MessageTagger msg =
 
 type alias UnhandledMessageTagger msg =
     ( WSPort, Path, QueryString, ClientId, String ) -> msg
+
+
+{-| Server Status types
+-}
+type ServerStatus
+    = Started
+    | Stopped
 
 
 {-| Connection status
@@ -165,7 +165,7 @@ type alias ServerDict msg =
 
 type alias ListenerTaggers msg =
     { messageTagger : MessageTagger msg
-    , connectionTagger : ConnectionTagger msg
+    , connectionStatusTagger : ConnectionStatusTagger msg
     }
 
 
@@ -246,23 +246,51 @@ cmdMap f cmd =
             StopServer (f << errorTagger) (f << tagger) wsPort
 
 
-{-| TODO
+{-| Start a Websocket Server
+
+    Usage:
+        -- Start a websocket server
+        Websocket.startServer ServerError Server UnhandledMessage (Just "/path/to/privateKey.pem") (Just "/path/to/certificate.pem") 8080
+
+        -- Start an SSL websocket server
+        Websocket.startServer ServerError Server UnhandledMessage Nothing Nothing 8080
+
+    where:
+        ServerError, Server are the error and success messages sent to the app
+        UnhandledMessage is the message sent when a message is received on a path without a listener
+        8080 is the server port
 -}
-startServer : ServerErrorTagger msg -> ServerTagger msg -> UnhandledMessageTagger msg -> Maybe FilePath -> Maybe FilePath -> WSPort -> Cmd msg
+startServer : ServerErrorTagger msg -> ServerStatusTagger msg -> UnhandledMessageTagger msg -> Maybe FilePath -> Maybe FilePath -> WSPort -> Cmd msg
 startServer errorTagger tagger unhandledMessageTagger keyPath certPath wsPort =
     command (StartServer errorTagger tagger unhandledMessageTagger keyPath certPath wsPort)
 
 
-{-| TODO
+{-| Send a message to the specified port and client. The `id` is the `ClientId` received from the `listen` subscription when a client connects to the server. N.B. client ids are unique per server, i.e. per port.
+
+    Usage:
+        Websocket.send SendError Sent 8080 1 "{a:1, b:2}"
+
+    where:
+        SendError and Sent are your application's messages to handle the different scenarios
+        8080 is the servers port
+        1 is the client id that was received from the listen subscription when a client connected to the server
+        {a:1, b:2} is the message being sent
 -}
 send : SendErrorTagger msg -> SendTagger msg -> WSPort -> ClientId -> String -> Cmd msg
 send sendErrorTagger sendTagger wsPort id message =
     command (Send sendErrorTagger sendTagger wsPort id message)
 
 
-{-| TODO
+{-| Stop the server on the specified port
+
+    Usage:
+        Websocket.stopServer ServerError Server 8080
+
+    where:
+        ServerError and Server are your application's messages to handle the different scenarios
+        8080 is the server's port
 -}
-stopServer : ServerErrorTagger msg -> ServerTagger msg -> WSPort -> Cmd msg
+stopServer : ServerErrorTagger msg -> ServerStatusTagger msg -> WSPort -> Cmd msg
 stopServer errorTagger tagger wsPort =
     command (StopServer errorTagger tagger wsPort)
 
@@ -274,15 +302,26 @@ stopServer errorTagger tagger wsPort =
 subMap : (a -> b) -> MySub a -> MySub b
 subMap f sub =
     case sub of
-        Listen errorTagger messageTagger connectionTagger wsPort path ->
-            Listen (f << errorTagger) (f << messageTagger) (f << connectionTagger) wsPort path
+        Listen errorTagger messageTagger connectionStatusTagger wsPort path ->
+            Listen (f << errorTagger) (f << messageTagger) (f << connectionStatusTagger) wsPort path
 
 
-{-| TODO
+{-| Listen for messages and connections/disconnections
+
+    Usage:
+        Websocket.listen ListenError WSMessage Connection 8080 "/auth"
+
+    where:
+        ListenError is your application's message to handle an error in listening
+        WSMessage is your application's message to handle received messages
+        Connection is your application's message to handle when a client connects or disconnects
+        8080 is the server port
+        /auth is the path to listen
+
 -}
-listen : ListenErrorTagger msg -> MessageTagger msg -> ConnectionTagger msg -> WSPort -> Path -> Sub msg
-listen errorTagger messageTagger connectionTagger wsPort path =
-    subscription (Listen errorTagger messageTagger connectionTagger wsPort path)
+listen : ListenErrorTagger msg -> MessageTagger msg -> ConnectionStatusTagger msg -> WSPort -> Path -> Sub msg
+listen errorTagger messageTagger connectionStatusTagger wsPort path =
+    subscription (Listen errorTagger messageTagger connectionStatusTagger wsPort path)
 
 
 
@@ -322,14 +361,14 @@ onEffects router cmds newSubs state =
 addMySub : Platform.Router msg (Msg msg) -> State msg -> MySub msg -> ( ListenerDict msg, List (Task x ()) ) -> ( ListenerDict msg, List (Task x ()) )
 addMySub router state sub ( dict, errorTasks ) =
     case sub of
-        Listen errorTagger messageTagger connectionTagger wsPort path ->
+        Listen errorTagger messageTagger connectionStatusTagger wsPort path ->
             let
                 error msg =
                     errorTagger ( wsPort, path, msg )
 
                 newSub =
                     { messageTagger = messageTagger
-                    , connectionTagger = connectionTagger
+                    , connectionStatusTagger = connectionStatusTagger
                     }
 
                 newErrorTasks =
@@ -473,14 +512,14 @@ toListeners router state msgConstructor listenerTaggersList =
 
 
 type Msg msg
-    = SuccessStartServer (ServerTagger msg) WSPort WebsocketServer
+    = SuccessStartServer (ServerStatusTagger msg) WSPort WebsocketServer
     | ErrorStartServer (ServerErrorTagger msg) WSPort String
     | Connect WSPort ClientId Websocket
     | Disconnect WSPort ClientId
     | Message WSPort Path QueryString ClientId String
     | ErrorSend (SendErrorTagger msg) WSPort ClientId String
     | SuccessSend (SendTagger msg) WSPort ClientId String
-    | SuccessStopServer (ServerTagger msg) WSPort
+    | SuccessStopServer (ServerStatusTagger msg) WSPort
     | ErrorStopServer (ServerErrorTagger msg) WSPort String
 
 
@@ -512,7 +551,7 @@ onSelfMsg router selfMsg state =
                             newState
                             wsPort
                             Nothing
-                            (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Connected )))
+                            (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionStatusTagger ( wsPort, clientId, Connected )))
                 )
 
         Disconnect wsPort clientId ->
@@ -529,7 +568,7 @@ onSelfMsg router selfMsg state =
                     state
                     wsPort
                     Nothing
-                    (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionTagger ( wsPort, clientId, Disconnected )))
+                    (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionStatusTagger ( wsPort, clientId, Disconnected )))
 
         Message wsPort path queryString clientId message ->
             let

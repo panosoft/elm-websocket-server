@@ -13,7 +13,7 @@ type alias Model =
 
 type Msg
     = Nop
-    | Connection ( WSPort, ClientId, ConnectionStatus )
+    | ConnectionStatus ( WSPort, ClientId, ConnectionStatus )
     | ListenError ( WSPort, Path, String )
     | WSMessage ( ClientId, QueryString, String )
     | SendError ( WSPort, ClientId, String )
@@ -35,7 +35,7 @@ update msg model =
         Nop ->
             model ! []
 
-        Connection ( wsPort, clientId, status ) ->
+        ConnectionStatus ( wsPort, clientId, status ) ->
             let
                 l =
                     Debug.log "Connection" ( wsPort, clientId, status )
@@ -76,7 +76,7 @@ subscriptions model =
     -- case not model.listenError && model.receiveCount < 3 of
     case not model.listenError of
         True ->
-            Websocket.listen ListenError WSMessage Connection model.wsPort model.path
+            Websocket.listen ListenError WSMessage ConnectionStatus model.wsPort model.path
 
         False ->
             Sub.none

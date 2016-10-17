@@ -24,7 +24,7 @@ type Msg
     = Nop
     | StopServer Time
     | ServerError ( WSPort, String )
-    | Server ( WSPort, ServerStatus )
+    | ServerStatus ( WSPort, ServerStatus )
     | UnhandledMessage ( WSPort, Path, QueryString, ClientId, String )
     | ListenModule Listener.Msg
 
@@ -52,7 +52,7 @@ init =
             initModel
     in
         -- model ! [ Websocket.startServer ServerError Server UnhandledMessage (Just "/Users/charles/Documents/devCerts/privateKey.pem") (Just "/Users/charles/Documents/devCerts/certificate.pem") model.wsPort ]
-        model ! [ Websocket.startServer ServerError Server UnhandledMessage Nothing Nothing model.wsPort ]
+        model ! [ Websocket.startServer ServerError ServerStatus UnhandledMessage Nothing Nothing model.wsPort ]
 
 
 main : Program Never
@@ -86,7 +86,7 @@ update msg model =
                     if model.stopped then
                         Cmd.none
                     else
-                        Websocket.stopServer ServerError Server model.wsPort
+                        Websocket.stopServer ServerError ServerStatus model.wsPort
 
                 {- }, node 1 -}
             in
@@ -99,10 +99,10 @@ update msg model =
             in
                 model ! []
 
-        Server ( wsPort, status ) ->
+        ServerStatus ( wsPort, status ) ->
             let
                 l =
-                    Debug.log "Server" ( wsPort, status )
+                    Debug.log "ServerStatus" ( wsPort, status )
             in
                 model ! []
 
