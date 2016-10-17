@@ -11,6 +11,7 @@ effect module Websocket
         , Path
         , QueryString
         , ClientId
+        , FilePath
         )
 
 {-| Websocket Server Effects Manager
@@ -24,7 +25,7 @@ The native driver is https://github.com/websockets/ws
 @docs listen
 
 # Types
-@docs ServerStatus, ConnectionStatus, WSPort, Path, QueryString, ClientId
+@docs ServerStatus, ConnectionStatus, WSPort, Path, QueryString, ClientId, FilePath
 
 -}
 
@@ -38,7 +39,7 @@ import Native.Websocket
 
 
 type MyCmd msg
-    = StartServer (ServerErrorTagger msg) (ServerTagger msg) (UnhandledMessageTagger msg) WSPort
+    = StartServer (ServerErrorTagger msg) (ServerTagger msg) (UnhandledMessageTagger msg) (Maybe FilePath) (Maybe FilePath) WSPort
     | Send (SendErrorTagger msg) (SendTagger msg) WSPort ClientId String
     | StopServer (ServerErrorTagger msg) (ServerTagger msg) WSPort
 
@@ -84,6 +85,12 @@ type alias Path =
 {-| Websocket QueryString type
 -}
 type alias QueryString =
+    String
+
+
+{-| Websocket FilePath type
+-}
+type alias FilePath =
     String
 
 
@@ -229,8 +236,8 @@ init =
 cmdMap : (a -> b) -> MyCmd a -> MyCmd b
 cmdMap f cmd =
     case cmd of
-        StartServer errorTagger tagger unhandledMessageTagger wsPort ->
-            StartServer (f << errorTagger) (f << tagger) (f << unhandledMessageTagger) wsPort
+        StartServer errorTagger tagger unhandledMessageTagger keyPath certPath wsPort ->
+            StartServer (f << errorTagger) (f << tagger) (f << unhandledMessageTagger) keyPath certPath wsPort
 
         Send sendErrorTagger sendTagger wsPort id message ->
             Send (f << sendErrorTagger) (f << sendTagger) wsPort id message
@@ -241,9 +248,9 @@ cmdMap f cmd =
 
 {-| TODO
 -}
-startServer : ServerErrorTagger msg -> ServerTagger msg -> UnhandledMessageTagger msg -> WSPort -> Cmd msg
-startServer errorTagger tagger unhandledMessageTagger wsPort =
-    command (StartServer errorTagger tagger unhandledMessageTagger wsPort)
+startServer : ServerErrorTagger msg -> ServerTagger msg -> UnhandledMessageTagger msg -> Maybe FilePath -> Maybe FilePath -> WSPort -> Cmd msg
+startServer errorTagger tagger unhandledMessageTagger keyPath certPath wsPort =
+    command (StartServer errorTagger tagger unhandledMessageTagger keyPath certPath wsPort)
 
 
 {-| TODO
@@ -357,10 +364,13 @@ settings2 router errorTagger tagger =
 handleCmd : Platform.Router msg (Msg msg) -> State msg -> MyCmd msg -> ( Task Never (), State msg )
 handleCmd router state cmd =
     case cmd of
-        StartServer errorTagger tagger unhandledMessageTagger wsPort ->
+        StartServer errorTagger tagger unhandledMessageTagger keyPath certPath wsPort ->
             let
                 server =
                     Server Nothing unhandledMessageTagger Dict.empty
+
+                startErrorCb error =
+                    Platform.sendToSelf router (ErrorStartServer errorTagger wsPort error)
 
                 connectCb clientId websocket =
                     Platform.sendToSelf router (Connect wsPort clientId websocket)
@@ -373,7 +383,7 @@ handleCmd router state cmd =
             in
                 (Dict.get wsPort state.servers)
                     |?> (\server -> ( Platform.sendToApp router (errorTagger ( wsPort, "Server already exists at specified port: " ++ (toString wsPort) )), state ))
-                    ?= ( Native.Websocket.startServer (settings1 router (ErrorStartServer errorTagger wsPort) (SuccessStartServer tagger wsPort)) wsPort connectCb disconnectCb messageCb
+                    ?= ( Native.Websocket.startServer (settings1 router (ErrorStartServer errorTagger wsPort) (SuccessStartServer tagger wsPort)) keyPath certPath wsPort startErrorCb connectCb disconnectCb messageCb
                        , { state | servers = Dict.insert wsPort server state.servers }
                        )
 

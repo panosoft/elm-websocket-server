@@ -31,28 +31,66 @@ const _panosoft$elm_websocket_node$Native_Websocket = function() {
 	var nextClientId = 0;
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Cmds
-	const _startServer = (port, connectCb, disconnectCb, messageCb, cb) => {
-		try {
-			const wss = new WebSocketServer({port});
-			// connect handler
-			wss.on('connection', ws => {
-				// set clientId since we cannot compare websockets in Elm and we're going to need clientId when disconnected
-				const clientId = nextClientId++;
-				const listener = message => {
-					const parsedUrl = url.parse(ws.upgradeReq.url, true);
-					E.Scheduler.rawSpawn(A4(messageCb, parsedUrl.pathname, JSON.stringify(parsedUrl.query), clientId, message));
-				};
-				// disconnect handler
-				ws.on('close', _ => {
-					ws.removeListener('message', listener);
-					E.Scheduler.rawSpawn(disconnectCb(clientId));
-				});
-				// listen
-				ws.on('message', listener);
-				E.Scheduler.rawSpawn(A2(connectCb, clientId, ws));
+	const getFiles = (keyPath, certPath, finalCb) => {
+		const fs = require('fs');
+		const readFile = (path, cb) => {
+			fs.readFile(path, (err, data) => {
+				if (err)
+					finalCb(err);
+				else
+					cb(data);
 			});
-			// return
-			cb(null, wss);
+		}
+		readFile(keyPath, key => {
+			readFile(certPath, cert => {
+				finalCb(null, {key, cert});
+			});
+		});
+	};
+	const _startServer = (keyPath, certPath, port, startErrorCb, connectCb, disconnectCb, messageCb, cb) => {
+		try {
+			const httpRequestHandler = (req, res) => {
+				res.writeHead(200);
+				res.end('Elm Websocket Server');
+			};
+			const doStart = (err, certData) => {
+				if (err) {
+					E.Scheduler.rawSpawn(startErrorCb(err));
+					return;
+				}
+				// start appropriate HTTP Server
+				const http = require(`http${certData ? 's' : ''}`);
+				const args = [certData, httpRequestHandler].filter(x => x);
+				const server = http.createServer.apply(null, args).listen(port);
+				// start websocket server
+				const wss = new WebSocketServer({server});
+				wss.__server__ = server;
+				// connect handler
+				wss.on('connection', ws => {
+					// set clientId since we cannot compare websockets in Elm and we're going to need clientId when disconnected
+					const clientId = nextClientId++;
+					const listener = message => {
+						const parsedUrl = url.parse(ws.upgradeReq.url, true);
+						E.Scheduler.rawSpawn(A4(messageCb, parsedUrl.pathname, JSON.stringify(parsedUrl.query), clientId, message));
+					};
+					// disconnect handler
+					ws.on('close', _ => {
+						ws.removeListener('message', listener);
+						E.Scheduler.rawSpawn(disconnectCb(clientId));
+					});
+					// listen
+					ws.on('message', listener);
+					E.Scheduler.rawSpawn(A2(connectCb, clientId, ws));
+				});
+				// return
+				cb(null, wss);
+
+			};
+			// if SSL get certificate files then start WS server otherwise just start it
+			if (!!keyPath && !!certPath)
+				getFiles(keyPath, certPath, doStart);
+			else
+				doStart();
 		}
 		catch (err) {
 			cb(err.message);
@@ -69,19 +107,20 @@ const _panosoft$elm_websocket_node$Native_Websocket = function() {
 	const _stopServer = (wss, cb) => {
 		try {
 			wss.close(cb);
+			wss.__server__.close();
 		}
 		catch (err) {
 			cb(err.message);
 		}
 	}
-	const startServer = helper.call4_1(_startServer);
+	const startServer = helper.call7_1(_startServer, helper.unwrap({1:'_0',2:'_0'}));
 	const send = helper.call2_0(_send);
 	const stopServer = helper.call1_0(_stopServer);
 
 	return {
 		///////////////////////////////////////////
 		// Cmds
-		startServer: F5(startServer),
+		startServer: F8(startServer),
 		send: F3(send),
 		stopServer: F2(stopServer)
 		///////////////////////////////////////////

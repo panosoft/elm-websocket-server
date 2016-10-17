@@ -16,6 +16,7 @@ type alias Model =
     , receiveCount : Int
     , listenError : Bool
     , listenerModel : Listener.Model
+    , stopped : Bool
     }
 
 
@@ -40,6 +41,7 @@ initModel =
     , receiveCount = 0
     , listenError = False
     , listenerModel = Listener.initModel wsPort
+    , stopped = False
     }
 
 
@@ -49,7 +51,8 @@ init =
         model =
             initModel
     in
-        model ! [ Websocket.startServer ServerError Server UnhandledMessage model.wsPort ]
+        -- model ! [ Websocket.startServer ServerError Server UnhandledMessage (Just "/Users/charles/Documents/devCerts/privateKey.pem") (Just "/Users/charles/Documents/devCerts/certificate.pem") model.wsPort ]
+        model ! [ Websocket.startServer ServerError Server UnhandledMessage Nothing Nothing model.wsPort ]
 
 
 main : Program Never
@@ -74,9 +77,20 @@ update msg model =
         StopServer _ ->
             let
                 l =
-                    Debug.log "Stopping Server" "..."
+                    if model.stopped then
+                        ""
+                    else
+                        Debug.log "Stopping Server" "..."
+
+                cmd =
+                    if model.stopped then
+                        Cmd.none
+                    else
+                        Websocket.stopServer ServerError Server model.wsPort
+
+                {- }, node 1 -}
             in
-                model ! [ Websocket.stopServer ServerError Server model.wsPort, node 1 ]
+                { model | stopped = True } ! [ cmd ]
 
         ServerError ( wsPort, error ) ->
             let
