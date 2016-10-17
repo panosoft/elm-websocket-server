@@ -73,7 +73,8 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case not model.listenError && model.receiveCount < 3 of
+    -- case not model.listenError && model.receiveCount < 3 of
+    case not model.listenError of
         True ->
             Websocket.listen ListenError WSMessage Connection model.wsPort model.path
 
