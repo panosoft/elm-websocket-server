@@ -250,10 +250,10 @@ cmdMap f cmd =
 
     Usage:
         -- Start a websocket server
-        Websocket.startServer ServerError Server UnhandledMessage (Just "/path/to/privateKey.pem") (Just "/path/to/certificate.pem") 8080
+        startServer ServerError Server UnhandledMessage (Just "/path/to/privateKey.pem") (Just "/path/to/certificate.pem") 8080
 
         -- Start an SSL websocket server
-        Websocket.startServer ServerError Server UnhandledMessage Nothing Nothing 8080
+        startServer ServerError Server UnhandledMessage Nothing Nothing 8080
 
     where:
         ServerError, Server are the error and success messages sent to the app
@@ -268,7 +268,7 @@ startServer errorTagger tagger unhandledMessageTagger keyPath certPath wsPort =
 {-| Send a message to the specified port and client. The `id` is the `ClientId` received from the `listen` subscription when a client connects to the server. N.B. client ids are unique per server, i.e. per port.
 
     Usage:
-        Websocket.send SendError Sent 8080 1 "{a:1, b:2}"
+        send SendError Sent 8080 1 "{a:1, b:2}"
 
     where:
         SendError and Sent are your application's messages to handle the different scenarios
@@ -284,7 +284,7 @@ send sendErrorTagger sendTagger wsPort id message =
 {-| Stop the server on the specified port
 
     Usage:
-        Websocket.stopServer ServerError Server 8080
+        stopServer ServerError Server 8080
 
     where:
         ServerError and Server are your application's messages to handle the different scenarios
@@ -309,7 +309,7 @@ subMap f sub =
 {-| Listen for messages and connections/disconnections
 
     Usage:
-        Websocket.listen ListenError WSMessage Connection 8080 "/auth"
+        listen ListenError WSMessage Connection 8080 "/auth"
 
     where:
         ListenError is your application's message to handle an error in listening

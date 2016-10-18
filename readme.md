@@ -30,10 +30,10 @@ __Usage__
 
 ```elm
 -- Start a websocket server
-Websocket.startServer ServerError Server UnhandledMessage (Just "/path/to/privateKey.pem") (Just "/path/to/certificate.pem") 8080
+startServer ServerError Server UnhandledMessage (Just "/path/to/privateKey.pem") (Just "/path/to/certificate.pem") 8080
 
 -- Start an SSL websocket server
-Websocket.startServer ServerError Server UnhandledMessage Nothing Nothing 8080
+startServer ServerError Server UnhandledMessage Nothing Nothing 8080
 ```
 * `8080` is the port
 * `ServerError`, `Server` are the error and success messages sent to the app
@@ -50,7 +50,7 @@ send sendErrorTagger sendTagger wsPort id message
 __Usage__
 
 ```elm
-Websocket.send SendError Sent 8080 1 "{a:1, b:2}"
+send SendError Sent 8080 1 "{a:1, b:2}"
 ```
 * `SendError` and `Sent` are your application's messages to handle the different scenarios
 * `8080` is the servers port
@@ -66,7 +66,7 @@ stopServer errorTagger tagger wsPort
 __Usage__
 
 ```elm
-Websocket.stopServer ServerError Server 8080
+stopServer ServerError Server 8080
 ```
 
 * `ServerError` and `Server` are your application's messages to handle the different scenarios
@@ -84,7 +84,7 @@ listen errorTagger messageTagger ConnectionStatusTagger wsPort path
 __Usage__
 
 ```elm
-Websocket.listen ListenError WSMessage Connection 8080 "/auth"
+listen ListenError WSMessage Connection 8080 "/auth"
 ```
 * `ListenError` is your application's message to handle an error in listening
 * `WSMessage` is your application's message to handle received messages
