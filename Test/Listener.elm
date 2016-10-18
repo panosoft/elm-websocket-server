@@ -38,7 +38,7 @@ update msg model =
         ConnectionStatus ( wsPort, clientId, status ) ->
             let
                 l =
-                    Debug.log "Connection" ( wsPort, clientId, status )
+                    Debug.log "ConnectionStatus" ( wsPort, clientId, status )
             in
                 model ! []
 
