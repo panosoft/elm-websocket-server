@@ -20,7 +20,7 @@ The installation can be done via `npm install` command.
 
 ### Test program
 
-The test server is a simple echo server. Use `buildTest.sh` to build it and run it with `node main` command.
+The test program is a simple echo server. Use `buildTest.sh` to build it and run it with `node main` command.
 
 ## API
 
