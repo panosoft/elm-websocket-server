@@ -1,8 +1,10 @@
 # Websocket Server Effects Manager for Elm
 
-> Websocket Effects Manager for node Elm programs. It supports both `ws://` and `wss://` protocols. Multiple servers can be started, one per port. Then multiple listeners per port can be created each with a unique path. For example a server can be started on port `8080` and then a listener on path `/` and `/api` can be registered.
+> Websocket Server Effects Manager for node Elm programs. It supports both `ws://` and `wss://` protocols. Multiple servers can be started, one per port. Then multiple listeners per port can be created each with a unique path. For example a server can be started on port `8080` and then a listener on path `/` and `/api` can be registered.
 
 > Messages will be routed to the listener along with the Query String of the request.
+
+> This is built on top of the canonical Websocket library for node, [ws](https://github.com/websockets/ws).
 
 ## Install
 
