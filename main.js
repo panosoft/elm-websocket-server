@@ -1,4 +1,4 @@
-// compile YourApp.elm with:
+// compile with:
 //		elm make Test/App.elm --output elm.js
 
 // load Elm module

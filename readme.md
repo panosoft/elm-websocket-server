@@ -18,6 +18,10 @@ You'll also need to install the dependent node modules at the root of your Appli
 
 The installation can be done via `npm install` command.
 
+### Test program
+
+The test server is a simple echo server. Use `buildTest.sh` to build it and run it with `node main` command.
+
 ## API
 
 ### Commands
