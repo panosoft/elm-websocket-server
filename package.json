@@ -1,5 +1,5 @@
 {
-  "name": "websockets",
+  "name": "elm-websocket-server",
   "version": "1.0.0",
   "description": "See 'dependencies' for which node modules your app will need to install to use the Websocket Effects Manager for Elm",
   "author": "Charles Scalfani",

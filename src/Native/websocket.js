@@ -26,7 +26,7 @@ const E = {
 const helper = require('@panosoft/elm-native-helpers/helper')(E);
 const WebSocketServer = require('ws').Server;
 const url = require('url');
-const _panosoft$elm_websocket_node$Native_Websocket = function() {
+const _panosoft$elm_websocket_server$Native_Websocket = function() {
 	// next client id
 	var nextClientId = 0;
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -129,4 +129,4 @@ const _panosoft$elm_websocket_node$Native_Websocket = function() {
 
 }();
 // for local testing
-const _user$project$Native_Websocket = _panosoft$elm_websocket_node$Native_Websocket;
+const _user$project$Native_Websocket = _panosoft$elm_websocket_server$Native_Websocket;
