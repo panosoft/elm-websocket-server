@@ -1,6 +1,6 @@
 {
     "version": "1.0.0",
-    "summary": "Websocket Server for Elm",
+    "summary": "Websocket Server Effects Manager for Elm",
     "repository": "https://github.com/user/project.git",
     "license": "Unlicense",
     "source-directories": [
