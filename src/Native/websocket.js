@@ -98,7 +98,7 @@ const _panosoft$elm_websocket_server$Native_Websocket = function() {
 	};
 	const _send = (ws, message, cb) => {
 		try {
-			ws.send(message, cb);
+			ws.send(message, err => err ? cb(err.message) : cb());
 		}
 		catch (err) {
 			cb(err.message);
@@ -106,7 +106,7 @@ const _panosoft$elm_websocket_server$Native_Websocket = function() {
 	};
 	const _stopServer = (wss, cb) => {
 		try {
-			wss.close(cb);
+			wss.close(err => err ? cb(err.message) : cb());
 			wss.__server__.close();
 		}
 		catch (err) {
