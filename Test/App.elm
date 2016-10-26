@@ -14,7 +14,6 @@ type alias Model =
     { wsPort : WSPort
     , path : String
     , receiveCount : Int
-    , listenError : Bool
     , listenerModel : Listener.Model
     , stopped : Bool
     }
@@ -39,7 +38,6 @@ initModel =
     { wsPort = wsPort
     , path = "/"
     , receiveCount = 0
-    , listenError = False
     , listenerModel = Listener.initModel wsPort
     , stopped = False
     }
@@ -57,9 +55,6 @@ init =
 
 main : Program Never
 main =
-    -- N.B. the dummy init which returns an empty Model and no Cmd
-    -- N.B. the dummy view returns an empty HTML text node
-    --      this is just to make the compiler happy since the worker() call Javascript doesn't use a render
     Html.App.program
         { init = init
         , view = (\_ -> text "")
