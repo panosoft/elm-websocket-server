@@ -5,8 +5,8 @@ effect module Websocket
         , send
         , stopServer
         , listen
-        , ServerStatus
-        , ConnectionStatus
+        , ServerStatus(..)
+        , ConnectionStatus(..)
         , WSPort
         , Path
         , QueryString
