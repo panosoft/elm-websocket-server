@@ -8,6 +8,7 @@ effect module Websocket
         , ServerStatus(..)
         , ConnectionStatus(..)
         , WSPort
+        , IPAddress
         , Path
         , QueryString
         , ClientId
@@ -25,7 +26,7 @@ The native driver is https://github.com/websockets/ws
 @docs listen
 
 # Types
-@docs ServerStatus, ConnectionStatus, WSPort, Path, QueryString, ClientId, FilePath
+@docs ServerStatus, ConnectionStatus, WSPort, IPAddress, Path, QueryString, ClientId, FilePath
 
 -}
 
@@ -68,6 +69,12 @@ type Websocket
 -}
 type alias WSPort =
     Int
+
+
+{-| IP Address
+-}
+type alias IPAddress =
+    String
 
 
 {-| Client Id
@@ -119,7 +126,7 @@ type alias ServerStatusTagger msg =
 
 
 type alias ConnectionStatusTagger msg =
-    ( WSPort, ClientId, ConnectionStatus ) -> msg
+    ( WSPort, ClientId, IPAddress, ConnectionStatus ) -> msg
 
 
 type alias MessageTagger msg =
@@ -411,11 +418,11 @@ handleCmd router state cmd =
                 startErrorCb error =
                     Platform.sendToSelf router (ErrorStartServer errorTagger wsPort error)
 
-                connectCb clientId websocket =
-                    Platform.sendToSelf router (Connect wsPort clientId websocket)
+                connectCb clientId ipAddress websocket =
+                    Platform.sendToSelf router (Connect wsPort clientId ipAddress websocket)
 
-                disconnectCb clientId =
-                    Platform.sendToSelf router (Disconnect wsPort clientId)
+                disconnectCb clientId ipAddress =
+                    Platform.sendToSelf router (Disconnect wsPort clientId ipAddress)
 
                 messageCb path queryString clientId message =
                     Platform.sendToSelf router (Message wsPort path queryString clientId message)
@@ -514,8 +521,8 @@ toListeners router state msgConstructor listenerTaggersList =
 type Msg msg
     = SuccessStartServer (ServerStatusTagger msg) WSPort WebsocketServer
     | ErrorStartServer (ServerErrorTagger msg) WSPort String
-    | Connect WSPort ClientId Websocket
-    | Disconnect WSPort ClientId
+    | Connect WSPort ClientId IPAddress Websocket
+    | Disconnect WSPort ClientId IPAddress
     | Message WSPort Path QueryString ClientId String
     | ErrorSend (SendErrorTagger msg) WSPort ClientId String
     | SuccessSend (SendTagger msg) WSPort ClientId String
@@ -540,7 +547,7 @@ onSelfMsg router selfMsg state =
                         &> Task.succeed (removeServer wsPort state)
                 )
 
-        Connect wsPort clientId websocket ->
+        Connect wsPort clientId ipAddress websocket ->
             (withServer state wsPort)
                 (\server ->
                     let
@@ -551,10 +558,10 @@ onSelfMsg router selfMsg state =
                             newState
                             wsPort
                             Nothing
-                            (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionStatusTagger ( wsPort, clientId, Connected )))
+                            (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionStatusTagger ( wsPort, clientId, ipAddress, Connected )))
                 )
 
-        Disconnect wsPort clientId ->
+        Disconnect wsPort clientId ipAddress ->
             let
                 server =
                     getServer state wsPort
@@ -568,7 +575,7 @@ onSelfMsg router selfMsg state =
                     state
                     wsPort
                     Nothing
-                    (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionStatusTagger ( wsPort, clientId, Disconnected )))
+                    (toListeners router newState (\listenerTaggers -> listenerTaggers.connectionStatusTagger ( wsPort, clientId, ipAddress, Disconnected )))
 
         Message wsPort path queryString clientId message ->
             let
