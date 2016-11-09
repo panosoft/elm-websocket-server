@@ -13,7 +13,7 @@ type alias Model =
 
 type Msg
     = Nop
-    | ConnectionStatus ( WSPort, ClientId, ConnectionStatus )
+    | ConnectionStatus ( WSPort, ClientId, IPAddress, ConnectionStatus )
     | ListenError ( WSPort, Path, String )
     | WSMessage ( ClientId, QueryString, String )
     | SendError ( WSPort, ClientId, String )
@@ -35,10 +35,10 @@ update msg model =
         Nop ->
             model ! []
 
-        ConnectionStatus ( wsPort, clientId, status ) ->
+        ConnectionStatus ( wsPort, clientId, iPAddress, status ) ->
             let
                 l =
-                    Debug.log "ConnectionStatus" ( wsPort, clientId, status )
+                    Debug.log "ConnectionStatus" ( wsPort, clientId, iPAddress, status )
             in
                 model ! []
 
