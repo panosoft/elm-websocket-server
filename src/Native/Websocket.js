@@ -73,21 +73,21 @@ var _panosoft$elm_websocket_server$Native_Websocket;
 	        					wss.__server__ = server;
 	        					// connect handler
 	        					wss.on('connection', ws => {
+									const parsedUrl = url.parse(ws.upgradeReq.url, true);
 	        						// set clientId since we cannot compare websockets in Elm and we're going to need clientId when disconnected
 	        						const clientId = nextClientId++;
 	        						const listener = message => {
-	        							const parsedUrl = url.parse(ws.upgradeReq.url, true);
 	        							E.Scheduler.rawSpawn(A4(messageCb, parsedUrl.pathname, JSON.stringify(parsedUrl.query), clientId, message));
 	        						};
 	        						// disconnect handler
 	        						ws.on('close', _ => {
 	        							ws.removeListener('message', listener);
-	        							E.Scheduler.rawSpawn(A2(disconnectCb, clientId, ws.__ipAddress__));
+	        							E.Scheduler.rawSpawn(A3(disconnectCb, parsedUrl.pathname, clientId, ws.__ipAddress__));
 	        						});
 	        						// listen
 	        						ws.on('message', listener);
 									ws.__ipAddress__ = ws.upgradeReq.headers['x-forwarded-for'] || ws.upgradeReq.connection.remoteAddress;
-	        						E.Scheduler.rawSpawn(A3(connectCb, clientId, ws.__ipAddress__, ws));
+	        						E.Scheduler.rawSpawn(A4(connectCb, parsedUrl.pathname, clientId, ws.__ipAddress__, ws));
 	        					});
 	        					// return
 	        					cb(null, wss);

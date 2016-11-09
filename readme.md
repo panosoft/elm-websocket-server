@@ -206,16 +206,16 @@ Connection status.
 
 ```elm
 type alias ConnectionStatusTagger msg =
-    ( WSPort, ClientId, IPAddress, ConnectionStatus ) -> msg
+    ( WSPort, Path, ClientId, IPAddress, ConnectionStatus ) -> msg
 ```
 
 __Usage__
 
 ```elm
-ConnectionStatus ( wsPort, clientId, ipAddress, status ) ->
+ConnectionStatus ( wsPort, path, clientId, ipAddress, status ) ->
 	let
 		l =
-			Debug.log "ConnectionStatus" ( wsPort, clientId, ipAddress, status )
+			Debug.log "ConnectionStatus" ( wsPort, path, clientId, ipAddress, status )
 	in
 		model ! []
 ```
