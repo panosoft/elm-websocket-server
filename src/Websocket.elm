@@ -30,6 +30,7 @@ The native driver is https://github.com/websockets/ws
 
 -}
 
+import Tuple exposing (first, second)
 import Dict exposing (Dict)
 import Task exposing (Task)
 import DebugF exposing (log, toStringF)
@@ -216,12 +217,12 @@ type alias State msg =
 
 (&>) : Task x a -> Task x b -> Task x b
 (&>) t1 t2 =
-    t1 `Task.andThen` \_ -> t2
+    t1 |> Task.andThen (\_ -> t2)
 
 
 (&>>) : Task x a -> (a -> Task x b) -> Task x b
 (&>>) t1 f =
-    t1 `Task.andThen` f
+    t1 |> Task.andThen f
 
 
 
@@ -490,8 +491,8 @@ getServer state wsPort =
 listenerTaggers : State msg -> WSPort -> Maybe Path -> List (ListenerTaggers msg)
 listenerTaggers state wsPort maybePath =
     Dict.toList state.listeners
-        |> List.filter (\( ( wsPort', path ), taggers ) -> wsPort' == wsPort && maybePath |?> (\path' -> path' == path) ?= True)
-        |> List.map snd
+        |> List.filter (\( ( wsPort_, path ), taggers ) -> wsPort_ == wsPort && maybePath |?> (\path_ -> path_ == path) ?= True)
+        |> List.map second
 
 
 withListenerTaggers : State msg -> WSPort -> Maybe Path -> (List (ListenerTaggers msg) -> Task Never (State msg)) -> Task Never (State msg)
