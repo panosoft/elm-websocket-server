@@ -337,19 +337,19 @@ listen errorTagger messageTagger connectionStatusTagger wsPort path =
 
 
 onEffects : Platform.Router msg (Msg msg) -> List (MyCmd msg) -> List (MySub msg) -> State msg -> Task Never (State msg)
-onEffects router cmds newSubs state =
+onEffects router cmds subs state =
     let
-        ( newSubsDict, subErrorTasks ) =
-            List.foldl (addMySub router state) ( Dict.empty, [] ) newSubs
+        ( listeners, subErrorTasks ) =
+            List.foldl (addMySub router state) ( Dict.empty, [] ) subs
 
-        oldListeners =
-            Dict.diff state.listeners newSubsDict
+        stoppedListening =
+            Dict.diff state.listeners listeners
 
-        newListeners =
-            Dict.diff newSubsDict state.listeners
+        startedListening =
+            Dict.diff listeners state.listeners
 
-        keepListeners =
-            Dict.intersect state.listeners newSubsDict
+        keptListening =
+            Dict.diff state.listeners stoppedListening
 
         handleOneCmd state cmd tasks =
             let
@@ -363,7 +363,7 @@ onEffects router cmds newSubs state =
     in
         Task.sequence (List.reverse <| tasks)
             &> Task.sequence (List.reverse <| subErrorTasks)
-            &> Task.succeed { cmdState | listeners = Dict.union keepListeners newListeners }
+            &> Task.succeed { cmdState | listeners = listeners }
 
 
 addMySub : Platform.Router msg (Msg msg) -> State msg -> MySub msg -> ( ListenerDict msg, List (Task x ()) ) -> ( ListenerDict msg, List (Task x ()) )
@@ -371,20 +371,14 @@ addMySub router state sub ( dict, errorTasks ) =
     case sub of
         Listen errorTagger messageTagger connectionStatusTagger wsPort path ->
             let
-                error msg =
-                    errorTagger ( wsPort, path, msg )
-
                 newSub =
                     { messageTagger = messageTagger
                     , connectionStatusTagger = connectionStatusTagger
                     }
-
-                newErrorTasks =
-                    Dict.get ( wsPort, path ) dict
-                        |?> (\_ -> Platform.sendToApp router (error "Listener already exists") :: errorTasks)
-                        ?= errorTasks
             in
-                ( Dict.insert ( wsPort, path ) newSub dict, newErrorTasks )
+                Dict.get ( wsPort, path ) dict
+                    |?> (\_ -> ( dict, Platform.sendToApp router (errorTagger ( wsPort, path, "Another listener exists" )) :: errorTasks ))
+                    ?= ( Dict.insert ( wsPort, path ) newSub dict, errorTasks )
 
 
 settings0 : Platform.Router msg (Msg msg) -> (a -> Msg msg) -> Msg msg -> { onError : a -> Task msg (), onSuccess : Never -> Task x () }
