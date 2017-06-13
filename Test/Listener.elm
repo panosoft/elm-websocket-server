@@ -16,7 +16,7 @@ type Msg
     | ConnectDisconnect ( WSPort, Path, ClientId, IPAddress, ConnectionStatus )
     | ListenError ( WSPort, Path, String )
     | WSMessage ( ClientId, QueryString, String )
-    | SendError ( WSPort, ClientId, String )
+    | SendError ( WSPort, ClientId, String, String )
     | Sent ( WSPort, ClientId, String )
 
 
@@ -56,10 +56,10 @@ update msg model =
             in
                 model ! [ Websocket.send SendError Sent model.wsPort clientId message ]
 
-        SendError ( wsPort, clientId, error ) ->
+        SendError ( wsPort, clientId, message, error ) ->
             let
                 l =
-                    Debug.log "SendError" ( wsPort, clientId, error )
+                    Debug.log "SendError" ( wsPort, clientId, message, error )
             in
                 model ! []
 

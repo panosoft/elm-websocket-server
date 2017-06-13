@@ -115,7 +115,7 @@ type alias ListenErrorTagger msg =
 
 
 type alias SendErrorTagger msg =
-    ( WSPort, ClientId, String ) -> msg
+    ( WSPort, ClientId, String, String ) -> msg
 
 
 type alias SendTagger msg =
@@ -432,10 +432,10 @@ handleCmd router state cmd =
             ( Dict.get wsPort state.servers
                 |?> (\server ->
                         Dict.get clientId server.clients
-                            |?> (\ws -> Native.Websocket.send (settings0 router (ErrorSend sendErrorTagger wsPort clientId) (SuccessSend sendTagger wsPort clientId message)) ws message)
-                            ?= Platform.sendToSelf router (ErrorSend sendErrorTagger wsPort clientId <| "Client does NOT exists with id: " ++ (toString clientId))
+                            |?> (\ws -> Native.Websocket.send (settings0 router (ErrorSend sendErrorTagger wsPort clientId message) (SuccessSend sendTagger wsPort clientId message)) ws message)
+                            ?= Platform.sendToSelf router (ErrorSend sendErrorTagger wsPort clientId message <| "Client does NOT exists with id: " ++ (toString clientId))
                     )
-                ?= Platform.sendToSelf router (ErrorSend sendErrorTagger wsPort clientId <| "Server does NOT exists at specified port: " ++ (toString wsPort))
+                ?= Platform.sendToSelf router (ErrorSend sendErrorTagger wsPort clientId message <| "Server does NOT exists at specified port: " ++ (toString wsPort))
             , state
             )
 
@@ -519,7 +519,7 @@ type Msg msg
     | Connect WSPort Path ClientId IPAddress Websocket
     | Disconnect WSPort Path ClientId IPAddress
     | Message WSPort Path QueryString ClientId String
-    | ErrorSend (SendErrorTagger msg) WSPort ClientId String
+    | ErrorSend (SendErrorTagger msg) WSPort ClientId String String
     | SuccessSend (SendTagger msg) WSPort ClientId String
     | SuccessStopServer (ServerStatusTagger msg) WSPort
     | ErrorStopServer (ServerErrorTagger msg) WSPort String
@@ -586,12 +586,12 @@ onSelfMsg router selfMsg state =
                         taggers
                             |> (toListeners router state (\listenerTaggers -> listenerTaggers.messageTagger ( clientId, queryString, message )))
 
-        ErrorSend sendErrorTagger wsPort clientId error ->
+        ErrorSend sendErrorTagger wsPort clientId message error ->
             let
                 errorMsg =
                     "Send error: '" ++ error ++ "' for server on port: " ++ (toString wsPort) ++ " for clientId: " ++ (toString clientId)
             in
-                (Platform.sendToApp router <| sendErrorTagger ( wsPort, clientId, errorMsg ))
+                (Platform.sendToApp router <| sendErrorTagger ( wsPort, clientId, message, errorMsg ))
                     &> Task.succeed state
 
         SuccessSend sendTagger wsPort clientId message ->

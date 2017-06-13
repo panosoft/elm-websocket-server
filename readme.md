@@ -146,16 +146,16 @@ Error attempting to send.
 
 ```elm
 type alias SendErrorTagger msg =
-    ( WSPort, ClientId, String ) -> msg
+    ( WSPort, ClientId, String, String ) -> msg
 ```
 
 __Usage__
 
 ```elm
-SendError ( wsPort, clientId, error ) ->
+SendError ( wsPort, clientId, message, error ) ->
 	let
 		l =
-			Debug.log "SendError" ( wsPort, clientId, error )
+			Debug.log "SendError" ( wsPort, clientId, message, error )
 	in
 		model ! []
 ```
